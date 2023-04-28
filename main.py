@@ -15,5 +15,4 @@ class Organism:
         self.speed = 1
         self.direction = choice[1, -1]
 
-
 print()
