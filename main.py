@@ -20,7 +20,7 @@ class Environment:
         self.x = range(0, size)
         self.y = range(0, size)
         self.steps_per_day = 20
-        self.default_generations = 20
+        self.default_days = 20
 
         self.food_density = food_density
         self.food_decay = food_decay
@@ -30,7 +30,7 @@ class Environment:
         # self.add_food_to_env(int(self.size**2 * self.food_density))
         self.population = self.create_population()
 
-        self.generation = 0
+        self.day = 0
         self.steps_today = 0
         self.day_complete = False
 
@@ -39,6 +39,8 @@ class Environment:
         if not self.screen:
             self.screen = pygame.display.set_mode((self.size * self.scale, self.size * self.scale))
         self.clock = pygame.time.Clock()
+        self.end_simulation = False
+        self.pause_simulation = False
 
 
         self.info = f"""Environment created with {self.size}x{self.size} area and {self.n} organisms.
@@ -57,8 +59,20 @@ class Environment:
 
     def run_step(self):
 
-        print(f'[{self.generation + 1}] Running step {self.steps_today + 1}/{self.steps_per_day}...')
+        # print(f'[{self.day + 1}] Running step {self.steps_today + 1}/{self.steps_per_day}...')
         self.steps_today += 1
+
+        # This is where we check for a pause button, or a stop button
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.end_simulation = True
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    self.pause_simulation = not self.pause_simulation
+                else:
+                    if event.key == pygame.K_q:
+                        self.end_simulation = True
+
         for organism in self.population:
 
             # Basic rate of hunger depletion
@@ -122,55 +136,93 @@ class Environment:
         #     survivor.hunger = 0
 
         # mutate the children?
-        self.generation += 1
+        self.day += 1
         self.population = survivors# + children
         self.steps_today = 0
         self.day_complete = False
 
     def simulate(self, i:int=None, graphs:bool=True, frequency:str='step', gif:bool=True):
         """
-        This will run the simulation for i generations. i is inherited from the Environment class, but can be overridden here.
+        This will run the simulation for i days. i is inherited from the Environment class, but can be overridden here.
 
         Args:
-            i (int, optional): Number of days to simulate. Defaults to None, which will use the default_generations value.
+            i (int, optional): Number of days to simulate. Defaults to None, which will use the default_days value.
             graphs (bool, optional): enable the generation of matplotlib graphs. Defaults to True.
             frequency (str, optional): determines the frequency of matplotlig graphs. Can be 'step' or 'day'. Defaults to 'step'.
             gif (bool, optional): enable the generation of a gif at the end of the simulation. Defaults to True.
         """
-        if not i:
-            i = self.default_generations
-        print(f'Simulating {i} generations...')
+        if i is None:
+            i = self.default_days
 
-        while self.generation < i:
+        if i == 0:
+            i = 99999999999
 
+        # print(f'Simulating {i} days...')
+
+        while self.day < i:
+
+            # Checks that at least 0.2 seconds have passed from the start of the previous step
             self.time_last_step = mstime()
             while mstime() < self.time_last_step + 200:
                 time.sleep(0.02)
+
+
+            # Here we check if we have, for some reason, to end the simulation
+            if self.end_simulation:
+                break
+
+            # Here we check if we have to pause the simulation
+            if self.pause_simulation:
+                pause_text = pygame.font.SysFont('Consolas', env.size).render('Pause', True, pygame.color.Color('Black'))
+                text_width = pause_text.get_width()
+                text_height = pause_text.get_height()
+                env.screen.blit(pause_text, (int(env.size * env.scale / 2) - int(text_width / 2), int(env.size * env.scale / 2) - int(text_height / 2)))
+                pygame.display.flip()
+                while self.pause_simulation:
+                    time.sleep(0.1)
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            self.end_simulation = True
+                        if event.type == pygame.KEYDOWN:
+                            if event.key == pygame.K_SPACE:
+                                self.pause_simulation = not self.pause_simulation
+
+            # This is where all the movements, eating, death and birth happens
+            # This is also where day_complete is set, if conditions are met
             self.run_step()
+
+
             # self.clock.tick(6)
-            gen = self.generation + 1
-            step = self.steps_today + 1
+            # gen = self.day + 1
+            # step = self.steps_today + 1
 
+            # This will draw the whole frame
             self.draw()
-            if graphs and frequency == 'step':
-                self.plot(f'gen_{gen:02d}_step_{step:02d}')
 
+            # if graphs and frequency == 'step':
+            #     self.plot(f'gen_{gen:02d}_step_{step:02d}')
+
+            # This will stop the cycle of steps for today, end the current day and begin a new day.
             if self.day_complete:
-                print()
-                print(f"Generation {gen:02d} complete: {len(self.population)} organisms remain.")
-                print(f"There are {len(self.food)} food items remaining.")
-                for organism in self.population:
-                    print(f"Organism #{organism.number} has {organism.hp} hp and {organism.hunger} hunger.")
-                print()
+                # print()
+                # print(f"Day {gen:02d} complete: {len(self.population)} organisms remain.")
+                # print(f"There are {len(self.food)} food items remaining.")
+                # for organism in self.population:
+                #     print(f"Organism #{organism.number} has {organism.hp} hp and {organism.hunger} hunger.")
+                # print()
 
-                if graphs and frequency == 'day':
-                    self.plot(f'gen_{gen:02d}')
+                # if graphs and frequency == 'day':
+                #     self.plot(f'gen_{gen:02d}')
+
+                # Here we kill, birth and advance the day. This is where we set day_complete to False.
                 self.end_day()
+
+                # This is where we add food to the environment, if regrowth is enabled.
                 self.begin_day()
 
-        print('Simulation complete.')
-        if gif:
-            self.create_gif()
+        # print('Simulation complete.')
+        # if gif:
+        #     self.create_gif()
         return
 
     def create_population(self):
@@ -194,7 +246,7 @@ class Environment:
         ax.plot([organism.pos_x for organism in self.population], [organism.pos_y for organism in self.population], 'rD')
         # Food
         ax.plot([food.pos_x for food in self.food], [food.pos_y for food in self.food], 'g.', markersize=2)
-        title = f'Generation {self.generation + 1} - Step {self.steps_today + 1}'
+        title = f'Day {self.day + 1} - Step {self.steps_today + 1}'
         plt.title(title)
         
         plt.xlim([-2, self.size + 2])
@@ -312,11 +364,9 @@ SCALE_FACTOR = 10
 
 pygame.init()
 
-
 env = Environment(size=SIZE, food_density=0.2, n=50, food_decay=False, regrowth=False)
-env.screen.fill((255, 255, 255))
 
 print(env.info)
 
-env.simulate(20, graphs=False, gif=False)
-# env.create_gif(duration=0.1, gif_filename='timelapse_fast.gif')
+# This is blocking
+env.simulate() 
